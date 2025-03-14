@@ -1,17 +1,22 @@
 {
-  "name": "qbunseeder",
-  "version": "1.0.0",
+  "name": "@tb.p/qbunseed",
+  "version": "1.1.0",
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "publish": "npm publish --access public"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@ctrl/qbittorrent": "^9.2.0",
     "dotenv": "^16.4.7",
+    "minimist": "^1.2.8",
     "qbittorrent-api-v2": "^1.2.2"
+  },
+  "bin": {
+    "qbunseed": "index.js"
   }
 }

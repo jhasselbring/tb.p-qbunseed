@@ -1,98 +1,131 @@
-import api from 'qbittorrent-api-v2';
+#!/usr/bin/env node
+import { QBittorrent } from '@ctrl/qbittorrent';
 import 'dotenv/config';
-import fs, { existsSync } from 'fs';
-import { rename } from 'fs/promises';
 import path from 'path';
-let qb;
-api.connect(
-    process.env.QBITTORRENT_URL || 'http://localhost:8843',
-    process.env.QBITTORRENT_USER || 'root',
-    process.env.QBITTORRENT_PASS || 'administer'
-)
-    .then(getqb)
-    .catch(err => {
-        console.error(err)
-    })
+import fs from 'fs';
+import minimist from 'minimist';
 
-function getqb(qbt) {
-    qb = qbt;
+const args = minimist(process.argv.slice(2), {
+    alias: {
+        port: 'P',
+        user: 'u',
+        pass: 'p',
+        cadence: 'c',
+        help: 'h'
+    }
+});
 
-    qb.torrents()
-        .then(processTorrents)
-        .catch(err => {
-            console.error(err)
-        })
+if (args.help) {
+    console.log(`Usage: npx qbunseed [options]
+
+Options:
+  -P, --port <port>       Set the port for qBittorrent
+  -u, --user <username>   Set the username for qBittorrent
+  -p, --pass <password>   Set the password for qBittorrent
+  -c, --cadence <ms>      Set the cadence in milliseconds
+  -h, --help              Display this help message
+
+  Example:
+  npx @tb.pqbunseed@latest -P 8080 -u admin -p password -c 1000
+`);
+    process.exit(0);
 }
 
-function processTorrents(torrents) {
-    torrents.forEach(processEachTorrents);
+if (!args.port || !args.user || !args.pass) {
+    console.error(`Error: Missing required arguments.
+
+Required options:
+  -P, --port <port>       Set the port for qBittorrent
+  -u, --user <username>   Set the username for qBittorrent
+  -p, --pass <password>   Set the password for qBittorrent
+
+Use -h for help.
+`);
+    process.exit(1);
 }
 
-function processEachTorrents(torrent) {
-    if (!torrent.name.includes(' thai friend with boy ninf KOTOS RICAS CONOS INFANT hyman.mp4.torrent')) return;
+const cadence = args.cadence;
 
-    qb.properties(torrent.hash).then(properties => {
-        // console.log(properties);
-        let baseSavePath = properties.save_path + '/';
-        qb.files(torrent.hash).then(files => {
+const client = new QBittorrent({
+    baseUrl: `http://localhost:${args.port}` || process.env.QBITTORRENT_URL,
+    username: args.user || process.env.QBITTORRENT_USER,
+    password: args.pass || process.env.QBITTORRENT_PASS,
+});
 
-            files.forEach(file => {
-                // Only proceed if the file is fully downloaded
-                if (file.progress < 1) return;
-                // console.log(file);
-                let filePath = baseSavePath + file.name;
 
-                if (existsSync(filePath)) {
-                    let newFilePath = baseSavePath + '@done/' + file.name;
-                    // Create @done directory if it doesn't exist
-                    const doneDir = path.dirname(newFilePath);
-                    if (!existsSync(doneDir)) {
-                        fs.mkdir(doneDir, { recursive: true }, err => {
-                            console.log(`Working on ##############1`, file.index)
-                            // rename(filePath, newFilePath)
-                            //     .then(() => {
-                            //         // @@@@@@@@@@@@@
-                            //         console.log(`Set priority #1`, file, torrent.hash, file.index, 0);
-                            //         qb.setFilePriority(torrent.hash, file.index, 0)
-                            //             .then(() => {
-                            //                 console.log(`Successfully set priority to 0 for file ${file.name}`);
-                            //             })
-                            //             .catch(err => {
-                            //                 console.error(`Error setting priority: ${err}`);
-                            //             });
-                            //         // @@@@@@@@@@@@@
-                            //     })
-                            //     .catch(err => {
-                            //         console.error(`Error moving file: ${err}`);
-                            //     });
-                        })
-                    } else {
-                        console.log(`Working on ##############2`, file.index)
-                        // rename(filePath, newFilePath)
-                        //     .then(() => {
-                                // qb.setFilePriority(torrent.hash, file.index, 0)
-                                //     .then(() => {
-                                //         console.log(`Successfully set priority to 0 for file ${file.name}`);
-                                //     })
-                                //     .catch(err => {
-                                //         console.error(`Error setting priority: ${err}`);
-                                //     });
-                            // })
-                            // .catch(err => {
-                            //     console.error(`Error moving file: ${err}`);
-                            // });
-                    }
-                } else {
-                    console.log(`Working on ##############3`, file.index)
-                    qb.setFilePriority(torrent.hash, file.index, 0)
-                        .then(() => {
-                            console.log(`Successfully set priority to 0 for file ${file.name}`);
-                        })
-                        .catch(err => {
-                            console.error(`Error setting priority: ${err}`);
-                        });
-                }
-            });
+
+function main() {
+    client.getAllData().then(torrents => {
+        torrents.torrents.forEach((torrent, i) => {
+            setTimeout(() => processTorrent(torrent), i * cadence);
         });
+
+    }).catch(err => {
+        console.error(err);
     });
+}
+function processTorrent(torrent) {
+    console.log(`Processing ${torrent.name}`);
+    client.torrentFiles(torrent.id).then(files => {
+        if (!files.length) return;
+        let doneList = [];
+
+        files.forEach(file => {
+            if (file.progress == 1) {
+
+                // We will only process files that are still being downloaded
+                if (file.priority >= 1) {
+                    let fileDir = torrent.raw.content_path + (file.name).replace(torrent.name, '');
+
+                    // Check if file exists
+                    if (fs.existsSync(fileDir)) {
+                        let newPath = torrent.savePath + '/' + '@done/' + fileDir.replace(torrent.savePath, '');
+                        const newDir = path.dirname(newPath);
+                        if (!fs.existsSync(newDir)) {
+                            fs.mkdirSync(newDir, { recursive: true });
+                        }
+                        try {
+                            fs.renameSync(fileDir, newPath);
+                            doneList.push(file.index);
+                        } catch (err) {
+                            return;
+                        }
+                    } else {
+                        console.log(`file ${file.index} is not found, setting to done/DO NOT DOWNLOAD`);
+                        doneList.push(file.index);
+                    }
+                }
+            }
+        });
+
+        console.log('Done count:', doneList.length);
+        if (doneList.length) {
+            client.setFilePriority(torrent.id, doneList, 0).then(res => {
+
+                let hasInProgress = false;
+                client.torrentFiles(torrent.id)
+                    .then(_files => {
+                        _files.forEach(_file => {
+                            if (_file.priority >= 1) hasInProgress = true;
+                            if (_file.progress < 1) hasInProgress = true;
+                        })
+                        if (!hasInProgress) {
+                            client.removeTorrent(torrent.id, true);
+                        }
+                    })
+            });
+        }
+
+    });
+}
+
+
+
+if (options.cadence || options.c) {
+    const cadence = parseInt(options.cadence || options.c, 10) * 1000; // Convert cadence to milliseconds
+    setInterval(() => {
+        main();
+    }, cadence);
+} else {
+    main();
 }
