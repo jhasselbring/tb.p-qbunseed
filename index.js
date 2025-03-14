@@ -121,7 +121,7 @@ function processTorrent(torrent) {
 
 
 
-if (options.cadence || options.c) {
+if (args.cadence || args.c) {
     const cadence = parseInt(options.cadence || options.c, 10) * 1000; // Convert cadence to milliseconds
     setInterval(() => {
         main();
