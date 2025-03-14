@@ -22,7 +22,7 @@ Options:
   -P, --port <port>       Set the port for qBittorrent
   -u, --user <username>   Set the username for qBittorrent
   -p, --pass <password>   Set the password for qBittorrent
-  -c, --cadence <ms>      Set the cadence in milliseconds
+  -c, --cadence <ms>      Set the cadence in seconds
   -h, --help              Display this help message
 
   Example:
