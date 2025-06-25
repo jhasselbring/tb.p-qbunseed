@@ -52,81 +52,82 @@ const client = new QBittorrent({
     password: args.pass || process.env.QBITTORRENT_PASS,
 });
 
-
-
-function main() {
-    client.getAllData().then(torrents => {
-        torrents.torrents.reduce((p, torrent) => {
-            return p.then(() => processTorrent(torrent)).then(() => new Promise(res => setTimeout(res, cadence)));
-        }, Promise.resolve());
-
-    }).catch(err => {
+async function main() {
+    try {
+        const torrents = await client.getAllData();
+        for (const torrent of torrents.torrents) {
+            await processTorrent(torrent);
+            await new Promise(res => setTimeout(res, cadence));
+        }
+    } catch (err) {
         console.error(err);
-    });
+    }
 }
-function processTorrent(torrent) {
+
+async function processTorrent(torrent) {
     console.log(`Processing ${torrent.name}`);
-    client.torrentFiles(torrent.id).then(files => {
-        if (!files.length) return;
-        let doneList = [];
+    const files = await client.torrentFiles(torrent.id);
+    if (!files.length) return;
+    let doneList = [];
 
-        files.forEach(file => {
-            if (file.progress == 1) {
+    for (const file of files) {
+        if (file.progress == 1) {
+            // We will only process files that are still being downloaded
+            if (file.priority >= 1) {
+                let fileDir = torrent.raw.content_path + (file.name).replace(torrent.name, '');
 
-                // We will only process files that are still being downloaded
-                if (file.priority >= 1) {
-                    let fileDir = torrent.raw.content_path + (file.name).replace(torrent.name, '');
-
-                    // Check if file exists
-                    if (fs.existsSync(fileDir)) {
-                        let rel;
-                        if (fileDir.startsWith(torrent.savePath)) {
-                            rel = path.relative(torrent.savePath, fileDir);
-                        } else {
-                            // fallback: just use the file name (or subpath after torrent.name)
-                            rel = file.name;
-                        }
-                        let newPath = path.join(torrent.savePath, '@done', rel);
-                        const newDir = path.dirname(newPath);
-                        if (!fs.existsSync(newDir)) {
-                            fs.mkdirSync(newDir, { recursive: true });
-                        }
-                        try {
-                            fs.renameSync(fileDir, newPath);
-                            doneList.push(file.index);
-                        } catch (err) {
-                            return;
-                        }
+                // Check if file exists
+                if (fs.existsSync(fileDir)) {
+                    let rel;
+                    if (fileDir.startsWith(torrent.savePath)) {
+                        rel = path.relative(torrent.savePath, fileDir);
                     } else {
-                        console.log(`file ${file.index} is not found, setting to done/DO NOT DOWNLOAD`);
-                        doneList.push(file.index);
+                        // fallback: just use the file name (or subpath after torrent.name)
+                        rel = file.name;
                     }
+                    let newPath = path.join(torrent.savePath, '@done', rel);
+                    const newDir = path.dirname(newPath);
+                    if (!fs.existsSync(newDir)) {
+                        try {
+                            fs.mkdirSync(newDir, { recursive: true });
+                        } catch (e) {
+                            // Ignore EEXIST
+                            if (e.code !== 'EEXIST') throw e;
+                        }
+                    }
+                    try {
+                        fs.renameSync(fileDir, newPath);
+                        doneList.push(file.index);
+                    } catch (err) {
+                        continue;
+                    }
+                } else {
+                    console.log(`file ${file.index} is not found, setting to done/DO NOT DOWNLOAD`);
+                    doneList.push(file.index);
                 }
             }
-        });
-
-        console.log('Done count:', doneList.length);
-        if (doneList.length) {
-            client.setFilePriority(torrent.id, doneList, 0).then(res => {
-
-                let hasInProgress = false;
-                client.torrentFiles(torrent.id)
-                    .then(_files => {
-                        _files.forEach(_file => {
-                            if (_file.priority >= 1) hasInProgress = true;
-                            if (_file.progress < 1) hasInProgress = true;
-                        })
-                        if (!hasInProgress) {
-                            client.removeTorrent(torrent.id, true);
-                        }
-                    })
-            });
         }
+    }
 
-    });
+    // Print Done count with color
+    if (doneList.length === 0) {
+        console.log('Done count:', '\x1b[31m0\x1b[0m'); // Red text
+    } else {
+        console.log('Done count:', `\x1b[42m${doneList.length}\x1b[0m`); // Green background
+    }
+    if (doneList.length) {
+        await client.setFilePriority(torrent.id, doneList, 0);
+        let hasInProgress = false;
+        const _files = await client.torrentFiles(torrent.id);
+        _files.forEach(_file => {
+            if (_file.priority >= 1) hasInProgress = true;
+            if (_file.progress < 1) hasInProgress = true;
+        });
+        if (!hasInProgress) {
+            await client.removeTorrent(torrent.id, true);
+        }
+    }
 }
-
-
 
 if (args.cadence || args.c) {
     const cadence = parseInt(args.cadence || args.c, 10) * 1000; // Convert cadence to milliseconds
