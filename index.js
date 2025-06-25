@@ -56,9 +56,9 @@ const client = new QBittorrent({
 
 function main() {
     client.getAllData().then(torrents => {
-        torrents.torrents.forEach((torrent, i) => {
-            setTimeout(() => processTorrent(torrent), i * cadence);
-        });
+        torrents.torrents.reduce((p, torrent) => {
+            return p.then(() => processTorrent(torrent)).then(() => new Promise(res => setTimeout(res, cadence)));
+        }, Promise.resolve());
 
     }).catch(err => {
         console.error(err);
@@ -79,7 +79,14 @@ function processTorrent(torrent) {
 
                     // Check if file exists
                     if (fs.existsSync(fileDir)) {
-                        let newPath = torrent.savePath + '/' + '@done/' + fileDir.replace(torrent.savePath, '');
+                        let rel;
+                        if (fileDir.startsWith(torrent.savePath)) {
+                            rel = path.relative(torrent.savePath, fileDir);
+                        } else {
+                            // fallback: just use the file name (or subpath after torrent.name)
+                            rel = file.name;
+                        }
+                        let newPath = path.join(torrent.savePath, '@done', rel);
                         const newDir = path.dirname(newPath);
                         if (!fs.existsSync(newDir)) {
                             fs.mkdirSync(newDir, { recursive: true });
