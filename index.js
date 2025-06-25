@@ -131,9 +131,12 @@ async function processTorrent(torrent) {
 
 if (args.cadence || args.c) {
     const cadence = parseInt(args.cadence || args.c, 10) * 1000; // Convert cadence to milliseconds
-    setInterval(() => {
-        main();
-    }, cadence);
+    (async function loop() {
+        while (true) {
+            await main();
+            await new Promise(res => setTimeout(res, cadence));
+        }
+    })();
 } else {
     main();
 }
