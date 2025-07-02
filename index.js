@@ -11,7 +11,9 @@ const args = minimist(process.argv.slice(2), {
         user: 'u',
         pass: 'p',
         cadence: 'c',
-        help: 'h'
+        help: 'h',
+        verbose: 'v',
+        torrent: 't'
     }
 });
 
@@ -24,6 +26,8 @@ Options:
   -p, --pass <password>   Set the password for qBittorrent
   -c, --cadence <ms>      Set the cadence in seconds
   -h, --help              Display this help message
+  -v, --verbose           Display which torrents are being processed
+  -t, --torrent <name>    Filter torrents by name
 
   Example:
   npx @tb.pqbunseed@latest -P 8080 -u admin -p password -c 1000
@@ -65,7 +69,9 @@ async function main() {
 }
 
 async function processTorrent(torrent) {
-    console.log(`Processing ${torrent.name}`);
+    if (args.verbose) {
+        console.log(`Processing ${torrent.name}`);
+    }
     const files = await client.torrentFiles(torrent.id);
     if (!files.length) return;
     let doneList = [];
@@ -111,9 +117,9 @@ async function processTorrent(torrent) {
 
     // Print Done count with color
     if (doneList.length === 0) {
-        console.log('Done count:', '\x1b[31m0\x1b[0m'); // Red text
+        console.log(torrent.id  + ' Done count:', '\x1b[31m0\x1b[0m'); // Red text
     } else {
-        console.log('Done count:', `\x1b[42m${doneList.length}\x1b[0m`); // Green background
+        console.log(torrent.id  + ' Done count:', `\x1b[42m${doneList.length}\x1b[0m`); // Green background
     }
     if (doneList.length) {
         await client.setFilePriority(torrent.id, doneList, 0);
